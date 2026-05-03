@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 use burn::backend::NdArray;
 use burn::backend::ndarray::NdArrayDevice;
@@ -6,6 +7,76 @@ use burn::module::Module;
 use crate::feedback::{evaluate, pattern_key, Pattern};
 use crate::model;
 use crate::wordlist;
+
+// ── First-Turn Entropy Cache ────────────────────────────────────────────────
+
+const CACHE_PATH: &str = "artifacts/first_turn_cache.json";
+
+/// Lazily-initialized cache, persisted to disk across runs.
+static FIRST_TURN_CACHE: OnceLock<Mutex<Option<HashMap<String, f64>>>> = OnceLock::new();
+
+fn cache_lock() -> &'static Mutex<Option<HashMap<String, f64>>> {
+    FIRST_TURN_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// Try loading the cache from a JSON file on disk.
+fn load_cache_from_disk() -> Option<HashMap<String, f64>> {
+    let data = std::fs::read_to_string(CACHE_PATH).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+/// Save the cache to a JSON file on disk.
+fn save_cache_to_disk(map: &HashMap<String, f64>) {
+    if let Ok(json) = serde_json::to_string(map) {
+        let _ = std::fs::create_dir_all("artifacts");
+        let _ = std::fs::write(CACHE_PATH, json);
+        eprintln!("  💾 Cache saved to {}", CACHE_PATH);
+    }
+}
+
+/// Compute first-turn entropy for all words, returning the full map.
+fn compute_first_turn_cache(all_words: &[String]) -> HashMap<String, f64> {
+    eprintln!(
+        "  🔥 Computing first-turn entropy cache for {} words...",
+        all_words.len()
+    );
+    let now = std::time::Instant::now();
+    let mut map = HashMap::with_capacity(all_words.len());
+    for (i, w) in all_words.iter().enumerate() {
+        map.insert(w.clone(), compute_entropy_raw(w, all_words));
+        if (i + 1) % 1000 == 0 {
+            eprintln!("    {}/{}...", i + 1, all_words.len());
+        }
+    }
+    eprintln!("  ✅ Cache ready in {:.1}s", now.elapsed().as_secs_f64());
+    map
+}
+
+/// Get the first-turn entropy for a word, using disk cache if available.
+pub fn first_turn_entropy(word: &str, all_words: &[String]) -> f64 {
+    let cache = cache_lock();
+    let mut guard = cache.lock().expect("cache lock poisoned");
+
+    // Already in memory
+    if let Some(ref map) = *guard {
+        return map.get(word).copied().unwrap_or(0.0);
+    }
+
+    // Try loading from disk
+    if let Some(map) = load_cache_from_disk() {
+        eprintln!("  📂 Loaded first-turn cache from disk ({} words)", map.len());
+        let result = map.get(word).copied().unwrap_or(0.0);
+        *guard = Some(map);
+        return result;
+    }
+
+    // Compute fresh
+    let map = compute_first_turn_cache(all_words);
+    save_cache_to_disk(&map);
+    let result = map[word];
+    *guard = Some(map);
+    result
+}
 
 /// Trait for a Wordle solving strategy.
 pub trait Solver {
@@ -26,7 +97,7 @@ impl Solver for EntropySolver {
         &self,
         remaining: &[String],
         all_words: &[String],
-        _history: &[(String, Pattern)],
+        history: &[(String, Pattern)],
     ) -> String {
         if remaining.is_empty() {
             return all_words.first().cloned().unwrap_or_default();
@@ -35,11 +106,25 @@ impl Solver for EntropySolver {
             return remaining[0].clone();
         }
 
+        // On first turn, use the cached entropy values
+        if history.is_empty() {
+            let mut best_word = remaining[0].clone();
+            let mut best_entropy = f64::NEG_INFINITY;
+            for guess in all_words {
+                let e = first_turn_entropy(guess, all_words);
+                if e > best_entropy {
+                    best_entropy = e;
+                    best_word = guess.clone();
+                }
+            }
+            return best_word;
+        }
+
         let mut best_word = remaining[0].clone();
         let mut best_entropy = f64::NEG_INFINITY;
 
         for guess in all_words {
-            let e = compute_entropy(guess, remaining);
+            let e = compute_entropy_raw(guess, remaining);
             if e > best_entropy {
                 best_entropy = e;
                 best_word = guess.clone();
@@ -50,9 +135,9 @@ impl Solver for EntropySolver {
     }
 }
 
-/// Compute entropy for a guess against remaining solution candidates.
+/// Compute entropy for a guess against remaining solution candidates (raw, no cache).
 /// Entropy = -Σ (p_i * log2(p_i)) where p_i is proportion of solutions in pattern group i.
-pub fn compute_entropy(guess: &str, remaining: &[String]) -> f64 {
+pub fn compute_entropy_raw(guess: &str, remaining: &[String]) -> f64 {
     let total = remaining.len() as f64;
     let mut counts: HashMap<u8, u32> = HashMap::new();
 

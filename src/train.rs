@@ -8,7 +8,7 @@ use rand::seq::SliceRandom;
 
 use crate::feedback::{evaluate, Feedback, Pattern};
 use crate::model::{encode_state, encode_word, WordleModel, WordleModelConfig};
-use crate::solver::{compute_entropy, EntropySolver, Solver};
+use crate::solver::{compute_entropy_raw, first_turn_entropy, EntropySolver, Solver};
 use crate::wordlist;
 
 // ── Training Sample ─────────────────────────────────────────────────────────
@@ -49,7 +49,11 @@ pub fn generate_training_data(
             };
 
             for candidate in &candidates {
-                let e = compute_entropy(candidate, &remaining);
+                let e = if history.is_empty() {
+                    first_turn_entropy(candidate, all_words)
+                } else {
+                    compute_entropy_raw(candidate, &remaining)
+                };
                 let word_features = encode_word(candidate);
                 data.push(TrainingSample {
                     state: state_features.clone(),
