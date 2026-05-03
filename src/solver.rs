@@ -212,6 +212,7 @@ pub struct ModelSolver {
 
 impl ModelSolver {
     /// Create a new ModelSolver from an already-loaded model.
+    #[allow(dead_code)]
     pub fn new(model: model::WordleModel<NdArray<f32>>, device: NdArrayDevice) -> Self {
         Self { model, device }
     }

@@ -24,6 +24,7 @@ pub fn pattern_key(pattern: &Pattern) -> u8 {
 }
 
 /// Decode a base-3 key back into a Pattern.
+#[allow(dead_code)]
 pub fn pattern_from_key(mut key: u8) -> Pattern {
     let mut pattern = [Feedback::Grey; 5];
     for i in (0..5).rev() {
@@ -116,10 +117,10 @@ pub fn is_consistent(word: &str, guess: &str, pattern: &Pattern) -> bool {
 
     // Check exact position constraints (Greens)
     for i in 0..5 {
-        if let Some(c) = exact_positions[i] {
-            if w[i] != c {
-                return false;
-            }
+        if let Some(c) = exact_positions[i]
+            && w[i] != c
+        {
+            return false;
         }
     }
 

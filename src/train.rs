@@ -24,11 +24,12 @@ pub struct TrainingSample {
 
 /// Generate training data by running the entropy solver on random games.
 /// For each game turn, sample `samples_per_state` random words and compute their entropy.
+/// Returns (training_data, validation_data) with 10% split for validation.
 pub fn generate_training_data(
     all_words: &[String],
     num_games: usize,
     samples_per_state: usize,
-) -> Vec<TrainingSample> {
+) -> (Vec<TrainingSample>, Vec<TrainingSample>) {
     let mut rng = rand::thread_rng();
     let mut data = Vec::new();
 
@@ -85,8 +86,13 @@ pub fn generate_training_data(
 
     // Shuffle
     data.shuffle(&mut rng);
-    println!("  Total training samples: {}", data.len());
-    data
+
+    // Split off 10% for validation
+    let val_count = (data.len() as f64 * 0.1) as usize;
+    let validation = data.split_off(data.len() - val_count);
+
+    println!("  Total training samples: {} ({} validation)", data.len(), validation.len());
+    (data, validation)
 }
 
 // ── Training ────────────────────────────────────────────────────────────────
@@ -95,7 +101,8 @@ pub fn generate_training_data(
 /// Returns the trained model.
 pub fn train_model<B: AutodiffBackend<FloatElem = f32>>(
     device: &B::Device,
-    data: &[TrainingSample],
+    train_data: &[TrainingSample],
+    val_data: &[TrainingSample],
     num_epochs: usize,
     batch_size: usize,
     learning_rate: f64,
@@ -105,18 +112,24 @@ pub fn train_model<B: AutodiffBackend<FloatElem = f32>>(
     let mut optim = AdamConfig::new().init::<B, WordleModel<B>>();
 
     println!(
-        "  Training: {} samples, {} epochs, batch_size={}, lr={}",
-        data.len(),
+        "  Training: {} samples ({} val), {} epochs, batch_size={}, lr={}",
+        train_data.len(),
+        val_data.len(),
         num_epochs,
         batch_size,
         learning_rate
     );
 
+    let mut best_model = model.clone();
+    let mut best_val_loss = f32::MAX;
+    let mut patience_counter = 0;
+    let patience = 5;
+
     for epoch in 0..num_epochs {
         let mut total_loss: f32 = 0.0;
         let mut batch_count = 0usize;
 
-        for chunk in data.chunks(batch_size) {
+        for chunk in train_data.chunks(batch_size) {
             if chunk.is_empty() {
                 continue;
             }
@@ -156,18 +169,54 @@ pub fn train_model<B: AutodiffBackend<FloatElem = f32>>(
             batch_count += 1;
         }
 
-        if (epoch + 1) % 10 == 0 || epoch == 0 {
+        // Compute validation loss
+        let mut val_loss: f32 = 0.0;
+        let mut val_count: usize = 0;
+        for chunk in val_data.chunks(batch_size) {
+            if chunk.is_empty() { continue; }
+            let mut input_tensors = Vec::with_capacity(chunk.len());
+            let mut target_vals = Vec::with_capacity(chunk.len());
+            for sample in chunk {
+                let mut combined = sample.state.clone();
+                combined.extend_from_slice(&sample.word);
+                input_tensors.push(Tensor::<B, 1>::from_floats(&combined[..], device).unsqueeze::<2>());
+                target_vals.push(sample.entropy);
+            }
+            let inputs = Tensor::cat(input_tensors, 0);
+            let targets = Tensor::<B, 1>::from_floats(&target_vals[..], device);
+            let output = model.forward(inputs);
+            let targets_2d = targets.unsqueeze::<2>();
+            let loss = (output - targets_2d).powf_scalar(2.0).mean();
+            val_loss += loss.into_scalar();
+            val_count += 1;
+        }
+        let avg_val_loss = val_loss / val_count as f32;
+
+        // Early stopping
+        if avg_val_loss < best_val_loss {
+            best_val_loss = avg_val_loss;
+            best_model = model.clone();
+            patience_counter = 0;
+        } else {
+            patience_counter += 1;
+            if patience_counter >= patience {
+                println!("  Early stopping at epoch {} (no val improvement for {} epochs)", epoch + 1, patience);
+                break;
+            }
+        }
+
+        if (epoch + 1) % 5 == 0 || epoch == 0 {
             println!(
-                "  Epoch {}/{} - avg loss: {:.6}",
-                epoch + 1,
-                num_epochs,
-                total_loss / batch_count as f32
+                "  Epoch {}/{} - train loss: {:.6}, val loss: {:.6}",
+                epoch + 1, num_epochs,
+                total_loss / batch_count as f32,
+                avg_val_loss
             );
         }
     }
 
     println!("  Training complete.");
-    model
+    best_model
 }
 
 /// Save the trained model to a file using Burn's CompactRecorder.
@@ -180,6 +229,7 @@ pub fn save_model<B: Backend>(model: &WordleModel<B>, path: &str) {
 }
 
 /// Load a trained model from a file.
+#[allow(dead_code)]
 pub fn load_model<B: Backend>(device: &B::Device, path: &str) -> WordleModel<B> {
     use burn::record::{CompactRecorder, Recorder};
     let config = WordleModelConfig::new();

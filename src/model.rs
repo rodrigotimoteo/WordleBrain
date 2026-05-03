@@ -96,10 +96,10 @@ pub fn encode_state(history: &[(String, Pattern)]) -> Vec<f32> {
             }
         }
         for letter in 0..26 {
-            if let Some(c) = known_green_letter {
-                if letter_idx(c) == letter {
-                    features[idx] = 1.0;
-                }
+            if let Some(c) = known_green_letter
+                && letter_idx(c) == letter
+            {
+                features[idx] = 1.0;
             }
             idx += 1;
         }
@@ -110,7 +110,7 @@ pub fn encode_state(history: &[(String, Pattern)]) -> Vec<f32> {
         for letter in 0..26 {
             let yellow_here = guesses.iter().zip(&patterns).any(|(g, p)| {
                 matches!(p[pos], Feedback::Yellow)
-                    && g.chars().nth(pos).map_or(false, |c| letter_idx(c) == letter)
+                    && g.chars().nth(pos).is_some_and(|c| letter_idx(c) == letter)
             });
             features[idx] = if yellow_here { 1.0 } else { 0.0 };
             idx += 1;
@@ -123,7 +123,7 @@ pub fn encode_state(history: &[(String, Pattern)]) -> Vec<f32> {
         for (g, p) in guesses.iter().zip(&patterns) {
             for i in 0..5 {
                 if matches!(p[i], Feedback::Green | Feedback::Yellow)
-                    && g.chars().nth(i).map_or(false, |c| letter_idx(c) == letter)
+                    && g.chars().nth(i).is_some_and(|c| letter_idx(c) == letter)
                 {
                     count += 1.0;
                 }
@@ -182,6 +182,7 @@ pub fn score_word<B: Backend<FloatElem = f32>>(
 }
 
 /// Score all candidate words given a game state. Returns (word, score) sorted descending.
+#[allow(dead_code)]
 pub fn score_candidates<B: Backend<FloatElem = f32>>(
     model: &WordleModel<B>,
     candidates: &[String],

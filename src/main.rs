@@ -65,6 +65,9 @@ enum Command {
         /// Learning rate
         #[arg(long, default_value = "0.001")]
         lr: f64,
+        /// Use GPU (WGPU/Metal) backend instead of CPU
+        #[arg(long)]
+        gpu: bool,
     },
     /// Benchmark solver performance on random words
     Bench {
@@ -97,7 +100,8 @@ fn main() {
             epochs,
             batch,
             lr,
-        } => cmd_train(&all_words, games, samples, epochs, batch, lr),
+            gpu,
+        } => cmd_train(&all_words, games, samples, epochs, batch, lr, gpu),
         Command::Bench { count, random, model, model_path } => cmd_bench(&all_words, count, random, model, &model_path),
     }
 }
@@ -247,6 +251,7 @@ fn cmd_train(
     epochs: usize,
     batch_size: usize,
     lr: f64,
+    use_gpu: bool,
 ) {
     println!("\n🧠 Training WordleBrain neural network");
     println!(
@@ -256,21 +261,47 @@ fn cmd_train(
 
     // Generate training data
     println!("\n📊 Generating training data...");
-    let data = train::generate_training_data(all_words, num_games, samples_per_state);
+    let (train_data, val_data) = train::generate_training_data(all_words, num_games, samples_per_state);
 
     // Train
     println!("\n🏋️ Training model...");
-    type Backend = burn::backend::Autodiff<burn::backend::NdArray<f32>>;
-    let device = burn::backend::ndarray::NdArrayDevice::default();
-    let model = train::train_model::<Backend>(&device, &data, epochs, batch_size, lr);
 
-    // Save
+    if use_gpu {
+        train_on_gpu(&train_data, &val_data, epochs, batch_size, lr);
+    } else {
+        train_on_cpu(&train_data, &val_data, epochs, batch_size, lr);
+    }
+}
+
+#[cfg(feature = "wgpu")]
+fn train_on_gpu(train_data: &[train::TrainingSample], val_data: &[train::TrainingSample], epochs: usize, batch_size: usize, lr: f64) {
+    println!("   Backend: WGPU (GPU/Metal)");
+    type GpuBackend = burn::backend::Autodiff<burn::backend::Wgpu<f32>>;
+    let device = burn::backend::wgpu::WgpuDevice::default();
+    let model = train::train_model::<GpuBackend>(&device, train_data, val_data, epochs, batch_size, lr);
     train::save_model(&model, "artifacts/wordlebrain_model");
+    println!("\n✅ Done! Model saved to artifacts/wordlebrain_model");
+}
+
+#[cfg(not(feature = "wgpu"))]
+fn train_on_gpu(train_data: &[train::TrainingSample], val_data: &[train::TrainingSample], _epochs: usize, _batch_size: usize, _lr: f64) {
+    eprintln!("⚠️  GPU backend not available. Build with --features wgpu to enable GPU training.");
+    eprintln!("   Falling back to CPU (NdArray) backend.");
+    train_on_cpu(train_data, val_data, _epochs, _batch_size, _lr);
+}
+
+fn train_on_cpu(train_data: &[train::TrainingSample], val_data: &[train::TrainingSample], epochs: usize, batch_size: usize, lr: f64) {
+    println!("   Backend: NdArray (CPU)");
+    type CpuBackend = burn::backend::Autodiff<burn::backend::NdArray<f32>>;
+    let device = burn::backend::ndarray::NdArrayDevice::default();
+    let model = train::train_model::<CpuBackend>(&device, train_data, val_data, epochs, batch_size, lr);
+train::save_model(&model, "artifacts/wordlebrain_model");
     println!("\n✅ Done! Model saved to artifacts/wordlebrain_model");
 }
 
 // ── Bench ───────────────────────────────────────────────────────────────────
 
+#[allow(clippy::needless_range_loop)]
 fn cmd_bench(all_words: &[String], count: usize, use_random: bool, use_model: bool, model_path: &str) {
     let solver_label = if use_model {
         "Neural Network"

@@ -33,7 +33,7 @@ impl Game {
     pub fn is_won(&self) -> bool {
         self.guesses
             .last()
-            .map_or(false, |(_, p)| p.iter().all(|f| matches!(f, crate::feedback::Feedback::Green)))
+            .is_some_and(|(_, p)| p.iter().all(|f| matches!(f, crate::feedback::Feedback::Green)))
     }
 
     /// True if game is over (won or max guesses reached).
