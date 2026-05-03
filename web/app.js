@@ -16,7 +16,6 @@ let wasmInitialized = false;
 async function initWasm() {
     try {
         await wasm_bindgen();
-        wasm_bindgen.init();
         const count = word_count();
         console.log('WordleBrain: Loaded ' + count + ' words');
         wasmInitialized = true;
