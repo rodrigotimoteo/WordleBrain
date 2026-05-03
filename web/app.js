@@ -2,7 +2,6 @@
 // Loaded via <script src="wordlebrain_wasm.js"> which sets window.wasm_bindgen
 
 const {
-    init,
     evaluate,
     solve_full,
     solve_step,
@@ -17,10 +16,9 @@ let wasmInitialized = false;
 async function initWasm() {
     try {
         await wasm_bindgen();
-        init();
-        const count = word_count();
-        console.log('WordleBrain: Loaded ' + count + ' words');
+        wasm_bindgen.init();
         wasmInitialized = true;
+        console.log('WordleBrain: Loaded ' + word_count() + ' words');
         startNewGame();
     } catch (err) {
         console.error('Failed to load WASM:', err);
