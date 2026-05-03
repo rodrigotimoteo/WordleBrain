@@ -11,7 +11,7 @@ use std::io::{self, Write};
 
 use crate::feedback::Feedback;
 use crate::game::Game;
-use crate::solver::{EntropySolver, RandomSolver, Solver};
+use crate::solver::{EntropySolver, ModelSolver, RandomSolver, Solver};
 
 #[derive(Parser)]
 #[command(name = "wordlebrain", about = "Machine learning Wordle solver")]
@@ -41,6 +41,12 @@ enum Command {
     Solve {
         /// The word to solve
         word: String,
+        /// Use the trained neural network model instead of entropy solver
+        #[arg(short, long)]
+        model: bool,
+        /// Path to the trained model file
+        #[arg(long, default_value = "artifacts/wordlebrain_model")]
+        model_path: String,
     },
     /// Generate training data and train the neural network model
     Train {
@@ -68,6 +74,12 @@ enum Command {
         /// Use random solver instead of entropy solver
         #[arg(short, long)]
         random: bool,
+        /// Use the trained neural network model instead of entropy solver
+        #[arg(short, long)]
+        model: bool,
+        /// Path to the trained model file
+        #[arg(long, default_value = "artifacts/wordlebrain_model")]
+        model_path: String,
     },
 }
 
@@ -78,7 +90,7 @@ fn main() {
     match cli.command {
         Command::Play { solution } => cmd_play(&all_words, solution),
         Command::Ai { count, random } => cmd_ai(&all_words, count, random),
-        Command::Solve { word } => cmd_solve(&all_words, &word),
+        Command::Solve { word, model, model_path } => cmd_solve(&all_words, &word, model, &model_path),
         Command::Train {
             games,
             samples,
@@ -86,7 +98,7 @@ fn main() {
             batch,
             lr,
         } => cmd_train(&all_words, games, samples, epochs, batch, lr),
-        Command::Bench { count, random } => cmd_bench(&all_words, count, random),
+        Command::Bench { count, random, model, model_path } => cmd_bench(&all_words, count, random, model, &model_path),
     }
 }
 
@@ -178,7 +190,7 @@ fn cmd_ai(all_words: &[String], count: usize, random: bool) {
 
 // ── Solve ───────────────────────────────────────────────────────────────────
 
-fn cmd_solve(all_words: &[String], word: &str) {
+fn cmd_solve(all_words: &[String], word: &str, use_model: bool, model_path: &str) {
     let word = word.to_lowercase();
     if word.len() != 5 || !all_words.contains(&word) {
         println!("'{}' is not a valid 5-letter word.", word);
@@ -187,12 +199,25 @@ fn cmd_solve(all_words: &[String], word: &str) {
 
     let mut game = Game::new(word.clone());
     let mut remaining = all_words.to_vec();
-    let solver = EntropySolver;
 
     println!("\n🧠 Solving: {}", word);
+    if use_model {
+        println!("   Using: trained neural network model ({})", model_path);
+    }
+
+    let model_solver: Option<ModelSolver> = if use_model {
+        Some(ModelSolver::from_file(model_path))
+    } else {
+        None
+    };
 
     loop {
-        let guess = solver.next_guess(&remaining, all_words, game.history());
+        let guess = if let Some(ref ms) = model_solver {
+            ms.next_guess(&remaining, all_words, game.history())
+        } else {
+            let solver = EntropySolver;
+            solver.next_guess(&remaining, all_words, game.history())
+        };
         let pattern = game.guess(&guess);
         println!(
             "   Turn {}: {:<5}  {}",
@@ -246,14 +271,27 @@ fn cmd_train(
 
 // ── Bench ───────────────────────────────────────────────────────────────────
 
-fn cmd_bench(all_words: &[String], count: usize, random: bool) {
+fn cmd_bench(all_words: &[String], count: usize, use_random: bool, use_model: bool, model_path: &str) {
+    let solver_label = if use_model {
+        "Neural Network"
+    } else if use_random {
+        "Random"
+    } else {
+        "Entropy"
+    };
+
     println!(
         "\n📊 Benchmarking {} solver over {} random games...\n",
-        if random { "Random" } else { "Entropy" },
-        count
+        solver_label, count
     );
 
-    let solver: &dyn Solver = if random { &RandomSolver } else { &EntropySolver };
+    let model_solver: Option<ModelSolver> = if use_model {
+        Some(ModelSolver::from_file(model_path))
+    } else {
+        None
+    };
+
+    let solver: &dyn Solver = if use_random { &RandomSolver } else { &EntropySolver };
     let mut total_guesses = 0;
     let mut wins = 0;
     let mut guess_distribution = [0usize; 7]; // 1..=6 guesses, 0=fail
@@ -262,7 +300,12 @@ fn cmd_bench(all_words: &[String], count: usize, random: bool) {
     solutions.shuffle(&mut rand::thread_rng());
 
     for (i, solution) in solutions.iter().take(count).enumerate() {
-        match crate::solver::play_game(solver, solution, all_words, 6) {
+        let result = if let Some(ref ms) = model_solver {
+            crate::solver::play_game(ms as &dyn Solver, solution, all_words, 6)
+        } else {
+            crate::solver::play_game(solver, solution, all_words, 6)
+        };
+        match result {
             Some(guesses) => {
                 wins += 1;
                 total_guesses += guesses;

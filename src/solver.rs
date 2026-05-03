@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
+use burn::backend::NdArray;
+use burn::backend::ndarray::NdArrayDevice;
+use burn::module::Module;
 use crate::feedback::{evaluate, pattern_key, Pattern};
+use crate::model;
 use crate::wordlist;
 
 /// Trait for a Wordle solving strategy.
@@ -110,4 +114,66 @@ pub fn play_game(
     }
 
     None
+}
+
+// ── Model-Based Solver ──────────────────────────────────────────────────────
+
+/// Solver that uses a trained neural network model to score candidate words.
+/// The model is loaded from disk and used for inference only (no training needed).
+pub struct ModelSolver {
+    model: model::WordleModel<NdArray<f32>>,
+    device: NdArrayDevice,
+}
+
+impl ModelSolver {
+    /// Create a new ModelSolver from an already-loaded model.
+    pub fn new(model: model::WordleModel<NdArray<f32>>, device: NdArrayDevice) -> Self {
+        Self { model, device }
+    }
+
+    /// Load a ModelSolver from a saved model file.
+    pub fn from_file(path: &str) -> Self {
+        use burn::record::{CompactRecorder, Recorder};
+        use crate::model::WordleModelConfig;
+
+        let device = NdArrayDevice::default();
+        let config = WordleModelConfig::new();
+        let record = CompactRecorder::new()
+            .load(path.into(), &device)
+            .expect("Failed to load model record");
+        let model = config.init(&device).load_record(record);
+        Self { model, device }
+    }
+}
+
+impl Solver for ModelSolver {
+    fn next_guess(
+        &self,
+        remaining: &[String],
+        _all_words: &[String],
+        history: &[(String, Pattern)],
+    ) -> String {
+        if remaining.is_empty() {
+            return String::new();
+        }
+        if remaining.len() <= 2 {
+            return remaining[0].clone();
+        }
+
+        let state_features = model::encode_state(history);
+
+        let mut best_word = remaining[0].clone();
+        let mut best_score = f32::NEG_INFINITY;
+
+        for word in remaining {
+            let wf = model::encode_word(word);
+            let score = model::score_word(&self.model, &state_features, &wf, &self.device);
+            if score > best_score {
+                best_score = score;
+                best_word = word.clone();
+            }
+        }
+
+        best_word
+    }
 }
