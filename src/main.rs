@@ -1,16 +1,13 @@
-mod feedback;
-mod game;
 mod model;
 mod solver;
 mod train;
-mod wordlist;
 
 use clap::{Parser, Subcommand};
 use rand::seq::SliceRandom;
 use std::io::{self, Write};
 
-use crate::feedback::Feedback;
-use crate::game::Game;
+use wordlebrain_core::feedback::Feedback;
+use wordlebrain_core::game::Game;
 use crate::solver::{EntropySolver, ModelSolver, RandomSolver, Solver};
 
 #[derive(Parser)]
@@ -88,7 +85,7 @@ enum Command {
 
 fn main() {
     let cli = Cli::parse();
-    let all_words = wordlist::load_words();
+    let all_words = wordlebrain_core::wordlist::load_words();
 
     match cli.command {
         Command::Play { solution } => cmd_play(&all_words, solution),
@@ -187,7 +184,7 @@ fn cmd_ai(all_words: &[String], count: usize, random: bool) {
                 println!("   ❌ Failed! Word: {}", solution);
                 break;
             }
-            remaining = wordlist::filter(&remaining, game.history());
+            remaining = wordlebrain_core::wordlist::filter(&remaining, game.history());
         }
     }
 }
@@ -238,7 +235,7 @@ fn cmd_solve(all_words: &[String], word: &str, use_model: bool, model_path: &str
             println!("   ❌ Failed!");
             break;
         }
-        remaining = wordlist::filter(&remaining, game.history());
+        remaining = wordlebrain_core::wordlist::filter(&remaining, game.history());
     }
 }
 

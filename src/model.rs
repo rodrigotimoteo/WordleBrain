@@ -4,7 +4,7 @@ use burn::{
     prelude::*,
 };
 
-use crate::feedback::{Feedback, Pattern};
+use wordlebrain_core::feedback::{Feedback, Pattern};
 
 // ── Dimensions ──────────────────────────────────────────────────────────────
 

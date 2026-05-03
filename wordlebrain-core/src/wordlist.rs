@@ -3,10 +3,10 @@ use crate::feedback::{is_consistent, Pattern};
 /// Load the word list embedded at compile time.
 /// Each word is a 5-letter lowercase string, one per line.
 pub fn load_words() -> Vec<String> {
-    include_str!("words")
+    include_str!("../../src/words")
         .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|w| w.len() == 5 && w.chars().all(|c| c.is_ascii_lowercase()))
+        .map(|l: &str| l.trim().to_string())
+        .filter(|w: &String| w.len() == 5 && w.chars().all(|c: char| c.is_ascii_lowercase()))
         .collect()
 }
 

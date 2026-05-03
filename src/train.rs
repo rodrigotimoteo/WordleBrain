@@ -6,10 +6,12 @@ use burn::{
 };
 use rand::seq::SliceRandom;
 
-use crate::feedback::{evaluate, Feedback, Pattern};
+use wordlebrain_core::feedback::{evaluate, Feedback, Pattern};
+use wordlebrain_core::solver::{compute_entropy_raw, compute_first_turn_cache, Solver};
+use wordlebrain_core::wordlist;
+
 use crate::model::{encode_state, encode_word, WordleModel, WordleModelConfig};
-use crate::solver::{compute_entropy_raw, first_turn_entropy, EntropySolver, Solver};
-use crate::wordlist;
+use crate::solver::first_turn_entropy;
 
 // ── Training Sample ─────────────────────────────────────────────────────────
 
@@ -37,7 +39,10 @@ pub fn generate_training_data(
         let solution = all_words.choose(&mut rng).unwrap().clone();
         let mut remaining = all_words.to_vec();
         let mut history: Vec<(String, Pattern)> = Vec::new();
-        let solver = EntropySolver;
+        let solver_cache = compute_first_turn_cache(all_words);
+    let solver = wordlebrain_core::solver::EntropySolver {
+        first_turn_cache: solver_cache.clone(),
+    };
 
         for _turn in 0..6 {
             let state_features = encode_state(&history);

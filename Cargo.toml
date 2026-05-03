@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "wordlebrain-core", "wordlebrain-wasm"]
+resolver = "2"
+
 [package]
 name = "wordlebrain"
 version = "0.1.0"
@@ -9,6 +13,7 @@ ndarray = ["burn/ndarray"]
 wgpu = ["burn/wgpu"]
 
 [dependencies]
+wordlebrain-core = { path = "wordlebrain-core" }
 clap = { version = "4", features = ["derive"] }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }

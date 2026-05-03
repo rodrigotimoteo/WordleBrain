@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 WordleBrain</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🧠 WordleBrain</h1>
+    </header>
+
+    <nav class="tab-bar">
+        <button class="tab-btn active" data-tab="play">Play</button>
+        <button class="tab-btn" data-tab="ai-solve">AI Solve</button>
+        <button class="tab-btn" data-tab="stats">Stats</button>
+    </nav>
+
+    <main>
+        <!-- Play Tab -->
+        <section id="play-tab" class="tab-content active">
+            <div id="play-grid" class="grid"></div>
+            <div id="play-keyboard" class="keyboard"></div>
+            <div id="play-message" class="message"></div>
+        </section>
+
+        <!-- AI Solve Tab -->
+        <section id="ai-solve-tab" class="tab-content">
+            <div class="ai-controls">
+                <input type="text" id="ai-solution-input" maxlength="5" placeholder="Enter solution word">
+                <button id="ai-random-btn">Random</button>
+                <button id="ai-start-btn">Start</button>
+            </div>
+            <div class="ai-controls">
+                <button id="ai-step-btn" disabled>Step</button>
+                <button id="ai-run-btn" disabled>Run</button>
+                <button id="ai-reset-btn" disabled>Reset</button>
+            </div>
+            <div id="ai-status" class="ai-status"></div>
+            <div id="ai-grid" class="grid"></div>
+        </section>
+
+        <!-- Stats Tab -->
+        <section id="stats-tab" class="tab-content">
+            <div class="stats-summary">
+                <div class="stat-box">
+                    <span class="stat-value" id="stat-played">0</span>
+                    <span class="stat-label">Played</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="stat-win-percent">0</span>
+                    <span class="stat-label">Win %</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="stat-current-streak">0</span>
+                    <span class="stat-label">Current Streak</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value" id="stat-max-streak">0</span>
+                    <span class="stat-label">Max Streak</span>
+                </div>
+            </div>
+            <h3>Guess Distribution</h3>
+            <div id="distribution-bars" class="distribution-bars"></div>
+            <button id="reset-stats-btn" class="reset-btn">Reset Stats</button>
+        </section>
+    </main>
+
+    <footer>
+        <span>Powered by Rust + WASM</span>
+        <a href="https://github.com/rodrigotimoteo/wordlebrain" target="_blank">GitHub</a>
+    </footer>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
