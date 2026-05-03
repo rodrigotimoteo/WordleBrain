@@ -424,3 +424,24 @@ footer a:hover {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+.action-btn {
+    display: block;
+    margin: 16px auto;
+    padding: 10px 24px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    background: #538d4e;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.action-btn:disabled {
+    background: #3a3a3c;
+    cursor: default;
+}
+.action-btn:hover:not(:disabled) {
+    background: #6abf5e;
+}
