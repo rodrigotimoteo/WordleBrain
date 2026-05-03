@@ -4,34 +4,39 @@ use wordlebrain_core::solver::{compute_first_turn_cache, EntropySolver, Solver};
 use wordlebrain_core::wordlist;
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::cell::RefCell;
 
-// ── State ─────────────────────────────────────────────────────────────────────
-
-static WORD_LIST: OnceLock<Vec<String>> = OnceLock::new();
-static FIRST_TURN_CACHE: OnceLock<HashMap<String, f64>> = OnceLock::new();
-
-fn get_words() -> &'static Vec<String> {
-    WORD_LIST.get().expect("call init() first")
+thread_local! {
+    static WORD_LIST: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    static FIRST_TURN_CACHE: RefCell<Option<HashMap<String, f64>>> = const { RefCell::new(None) };
 }
 
-fn get_cache() -> &'static HashMap<String, f64> {
-    FIRST_TURN_CACHE.get().expect("call init() first")
+fn get_words() -> Vec<String> {
+    WORD_LIST.with(|w| {
+        w.borrow().clone().expect("call init() first")
+    })
 }
 
-// ── WASM Exports ──────────────────────────────────────────────────────────────
+fn get_or_compute_cache() -> HashMap<String, f64> {
+    FIRST_TURN_CACHE.with(|c| {
+        let mut cache = c.borrow_mut();
+        if let Some(ref m) = *cache {
+            return m.clone();
+        }
+        let words = get_words();
+        let computed = compute_first_turn_cache(&words);
+        *cache = Some(computed.clone());
+        computed
+    })
+}
 
-/// Initialize the word list and compute the first-turn entropy cache.
-/// Call this once before using other functions. Returns word count.
+/// Initialize the word list. Call once before using other functions.
+/// Returns word count. The entropy cache is computed lazily on first use.
 #[wasm_bindgen]
 pub fn init() -> usize {
     let words = wordlist::load_words();
     let count = words.len();
-
-    let cache = compute_first_turn_cache(&words);
-    let _ = FIRST_TURN_CACHE.set(cache);
-    let _ = WORD_LIST.set(words);
-
+    WORD_LIST.with(|w| *w.borrow_mut() = Some(words));
     count
 }
 
@@ -73,25 +78,24 @@ pub fn validate_word(word: &str) -> bool {
 #[wasm_bindgen]
 pub fn get_hint(history_json: &str) -> String {
     let words = get_words();
-    let cache = get_cache();
+    let cache = get_or_compute_cache();
     let solver = EntropySolver {
-        first_turn_cache: cache.clone(),
+        first_turn_cache: cache,
     };
 
     let history: Vec<(String, Pattern)> = match parse_history(history_json) {
         Ok(h) => h,
         Err(_) => {
-            // No history or parse error — return first-turn best guess
             return solver
-                .next_guess(words, words, &[])
+                .next_guess(&words, &words, &[])
         }
     };
 
-    let remaining = wordlebrain_core::wordlist::filter(words, &history);
+    let remaining = wordlebrain_core::wordlist::filter(&words, &history);
     if remaining.is_empty() {
         return words.first().cloned().unwrap_or_default();
     }
-    solver.next_guess(&remaining, words, &history)
+    solver.next_guess(&remaining, &words, &history)
 }
 
 /// Solve a word step by step. Given a solution word and a step index (0-based),
@@ -100,9 +104,9 @@ pub fn get_hint(history_json: &str) -> String {
 #[wasm_bindgen]
 pub fn solve_step(solution: &str, step: usize) -> String {
     let words = get_words();
-    let cache = get_cache();
+    let cache = get_or_compute_cache();
     let solver = EntropySolver {
-        first_turn_cache: cache.clone(),
+        first_turn_cache: cache,
     };
 
     let mut remaining = words.to_vec();
@@ -112,7 +116,7 @@ pub fn solve_step(solution: &str, step: usize) -> String {
         if remaining.is_empty() {
             return String::new();
         }
-        let guess = solver.next_guess(&remaining, words, &history);
+        let guess = solver.next_guess(&remaining, &words, &history);
         let pattern = wordlebrain_core::feedback::evaluate(&guess, solution);
         let won = pattern.iter().all(|f| matches!(f, Feedback::Green));
 
@@ -146,12 +150,12 @@ pub fn solve_step(solution: &str, step: usize) -> String {
 #[wasm_bindgen]
 pub fn solve_full(solution: &str) -> String {
     let words = get_words();
-    let cache = get_cache();
+    let cache = get_or_compute_cache();
     let solver = EntropySolver {
-        first_turn_cache: cache.clone(),
+        first_turn_cache: cache,
     };
 
-    let result = play_game_trace(&solver, solution, words);
+    let result = play_game_trace(&solver, solution, &words);
     serde_json::to_string(&result).unwrap_or_else(|_| "[]".to_string())
 }
 
