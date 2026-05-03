@@ -16,20 +16,15 @@ let wasmInitialized = false;
 async function initWasm() {
     try {
         await wasm_bindgen();
+        wasm_bindgen.init();
         const count = word_count();
         console.log('WordleBrain: Loaded ' + count + ' words');
         wasmInitialized = true;
-        enableUI();
+        startNewGame();
     } catch (err) {
         console.error('Failed to load WASM:', err);
         showMessage('play-message', 'Failed to load game. Refresh to retry.');
     }
-}
-
-function enableUI() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.disabled = false;
-    });
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────────
@@ -82,7 +77,6 @@ function setupTabs() {
             document.getElementById(tab + '-tab').classList.add('active');
             if (tab === 'stats') updateStatsUI();
         });
-        btn.disabled = true;
     });
 }
 
@@ -153,6 +147,7 @@ function startNewGame() {
     clearGrid('play-grid');
     clearKeyboard('play-keyboard');
     showMessage('play-message', '');
+    document.getElementById('play-new-game-btn').disabled = true;
 }
 
 function handleKeyPress(key) {
@@ -195,6 +190,10 @@ function submitGuess() {
         gameOver = true;
         showMessage('play-message', '💀 The word was: ' + playSolution.toUpperCase());
         saveGameResult(playHistory.length, false);
+    }
+
+    if (gameOver) {
+        document.getElementById('play-new-game-btn').disabled = false;
     }
 
     currentGuess = '';
