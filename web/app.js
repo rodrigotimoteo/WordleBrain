@@ -6,7 +6,7 @@ import init, {
     random_word,
     validate_word,
     word_count
-} from './pkg/wordlebrain_wasm.js';
+} from './wordlebrain_wasm.js';
 
 // ── WASM Initialization ──
 let wasmInitialized = false;

@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -29,11 +31,9 @@ jobs:
       - name: Build WASM
         run: wasm-pack build wordlebrain-wasm --target web --out-dir ../web/pkg
 
-      - name: Copy web assets
+      - name: Copy web assets into pkg
         run: |
-          cp web/index.html web/pkg/
-          cp web/style.css web/pkg/
-          cp web/app.js web/pkg/
+          cp web/index.html web/style.css web/app.js web/pkg/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
