@@ -2,6 +2,7 @@
 // Loaded via <script src="wordlebrain_wasm.js"> which sets window.wasm_bindgen
 
 const {
+    init,
     evaluate,
     solve_full,
     solve_step,
